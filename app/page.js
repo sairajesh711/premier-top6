@@ -1,103 +1,195 @@
-import Image from "next/image";
+"use client";
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabaseClient";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+
+const TEAMS = [
+  "Liverpool",
+  "Arsenal",
+  "Manchester City",
+  "Manchester United",
+  "Chelsea",
+  "Tottenham",
+  "Aston Villa",
+  "Newcastle",
+  "Brighton",
+  "Nottingham Forest",
+  "Bournemouth",
+];
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const router = useRouter();
+  const [picks, setPicks] = useState([]);
+  const [pool, setPool]   = useState(TEAMS);
+  const [msg,  setMsg]    = useState("");
+  const [load, setLoad]   = useState(false);
+  const [modal, showModal] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+  /* ---------------- drag logic -------------- */
+  const onDragEnd = ({ source, destination }) => {
+    if (!destination) return;
+
+    const fromPool = source.droppableId === "pool";
+    const toPool   = destination.droppableId === "pool";
+
+    // pool → picks
+    if (fromPool && !toPool) {
+      if (picks.length >= 6) return;
+      const nextPool = [...pool];
+      const [team] = nextPool.splice(source.index, 1);
+      const next = [...picks];
+      next.splice(destination.index, 0, team);
+      setPool(nextPool);
+      setPicks(next);
+    }
+    // picks reorder
+    if (!fromPool && !toPool) {
+      const next = [...picks];
+      const [moved] = next.splice(source.index, 1);
+      next.splice(destination.index, 0, moved);
+      setPicks(next);
+    }
+    // picks → pool
+    if (!fromPool && toPool) {
+      const next = [...picks];
+      const [team] = next.splice(source.index, 1);
+      const nextPool = [...pool];
+      nextPool.splice(destination.index, 0, team);
+      setPicks(next);
+      setPool(nextPool);
+    }
+  };
+
+  /* ---------------- helpers ---------------- */
+  const buildPayload = (arr) => {
+    const obj = {};
+    arr.forEach((t, i) => (obj[t.replace(/\s+/g, "_").toLowerCase()] = i + 1));
+    pool
+      .filter((t) => !arr.includes(t))
+      .forEach((t) => (obj[t.replace(/\s+/g, "_").toLowerCase()] = 8));
+    return obj;
+  };
+
+  const submit = async (arr) => {
+    setLoad(true);
+    const { error } = await supabase.from("votes").insert([buildPayload(arr)]);
+    setLoad(false);
+    if (error) {
+      setMsg("❌ Submission failed.");
+    } else {
+      setMsg("🎉 Vote recorded! Redirecting …");
+      setTimeout(() => router.push("/results"), 1100);
+    }
+  };
+
+  const handleSubmit = () => {
+    setMsg("");
+    if (!picks.length) return setMsg("⚠️ Pick at least one team.");
+    if (picks[0] !== "Liverpool") return showModal(true);
+    submit(picks);
+  };
+
+  const fixAndSubmit = () => {
+    const fixed = ["Liverpool", ...picks.filter((t) => t !== "Liverpool")].slice(0, 6);
+    setPicks(fixed);
+    setPool(TEAMS.filter((t) => !fixed.includes(t)));
+    showModal(false);
+    submit(fixed);
+  };
+
+  /* ---------------- UI ---------------- */
+  return (
+    <main className="p-6 max-w-lg mx-auto font-sans text-gray-900 dark:text-gray-100">
+      {/* header */}
+      <header className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-indigo-500">Premier League Top 6</h1>
+        <button onClick={() => router.push("/results")} className="underline">
+          View Results
+        </button>
+      </header>
+
+      {msg && <div className="mb-4 p-4 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">{msg}</div>}
+
+      <p className="mb-3">Drag up to six teams into the box below and order them.</p>
+
+      <DragDropContext onDragEnd={onDragEnd}>
+        {/* picks */}
+        <Droppable droppableId="top">
+          {(prov) => (
+            <div ref={prov.innerRef} {...prov.droppableProps} className="mb-6 p-4 border-2 border-dashed border-indigo-300 rounded min-h-[160px] space-y-2">
+              {picks.length === 0 && <p className="text-gray-500">Your picks appear here</p>}
+              {picks.map((t, i) => (
+                <Draggable key={t} draggableId={t} index={i}>
+                  {(p) => (
+                    <div ref={p.innerRef} {...p.draggableProps} {...p.dragHandleProps} className="p-3 bg-indigo-600 rounded text-white shadow">
+                      {i + 1}. {t}
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {prov.placeholder}
+            </div>
+          )}
+        </Droppable>
+
+        {/* pool */}
+        <h2 className="font-semibold text-indigo-600 mb-2">Available Teams</h2>
+        <Droppable droppableId="pool" direction="horizontal">
+          {(prov) => (
+            <div ref={prov.innerRef} {...prov.droppableProps} className="grid grid-cols-2 gap-2">
+              {pool.map((t, i) => (
+                <Draggable key={t} draggableId={t} index={i}>
+                  {(p, snapshot) => (
+                    <div
+                      ref={p.innerRef}
+                      {...p.draggableProps}
+                      {...p.dragHandleProps}
+                      className={`p-2 h-10 rounded cursor-move select-none transition
+                        ${snapshot.isDragging ? "bg-indigo-500 text-white" : "bg-gray-200 text-gray-900 dark:bg-gray-800 dark:text-gray-100"}
+                      `}
+                    >
+                      {t}
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {/* invisible placeholder keeps grid height, preventing flicker */}
+              {prov.placeholder && (
+                <div
+                  style={{ height: 40 }}
+                  className="invisible col-span-1 bg-gray-200 rounded"
+                />
+              )}
+            </div>
+          )}
+        </Droppable>
+      </DragDropContext>
+
+      <button onClick={handleSubmit} disabled={load} className="mt-6 w-full py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white">
+        {load ? "Submitting…" : "Submit Votes"}
+      </button>
+
+      {/* witty modal */}
+      {modal &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-900 rounded p-6 w-80 text-center shadow-lg">
+              <h2 className="text-xl font-bold text-indigo-600 mb-3">⚠️ Lack of Ball knowledge detected!</h2>
+              <p className="mb-6">Liverpool isn’t #1. Choose your fate:</p>
+              <div className="flex gap-3">
+                <button onClick={fixAndSubmit} className="flex-1 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                  Fix it (YNWA) ❤️
+                </button>
+                <button onClick={() => { showModal(false); submit(picks); }} className="flex-1 py-2 bg-gray-300 dark:bg-gray-700 rounded hover:bg-gray-400">
+                  I’m brave, send it 😎
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+    </main>
   );
 }
