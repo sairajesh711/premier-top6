@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import Link from "next/link";
 
 const columns = [
   "liverpool",
@@ -72,7 +73,7 @@ export default function Results() {
     <main className="p-6 max-w-xl mx-auto font-sans space-y-6">
       <header className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Community Top 6</h1>
-        <a href="/" className="text-indigo-600 underline">Vote Again</a>
+        <Link href="/" className="text-indigo-600 underline">Vote Again</Link>
       </header>
 
       <section>
